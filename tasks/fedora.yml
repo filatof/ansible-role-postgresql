@@ -11,24 +11,24 @@
       ansible.builtin.dnf:
         name: postgresql-server
         state: present
-      when: version == "latest"
+      when: postgresql_version == "latest"
 
-    - name: Install PostgreSQL server {{ version }}
+    - name: Install PostgreSQL server {{ postgresql_version }}
       ansible.builtin.dnf:
         name: "postgresql{{ version }}-server"
         state: present
-      when: version != "latest"
+      when: postgresql_version != "latest"
 
     - name: Initialize PostgreSQL database
       ansible.builtin.command: >
-        {{ '/usr/pgsql-' + version + '/bin/postgresql-' + version + '-setup initdb'
-          if version != 'latest' else 'postgresql-setup --initdb' }}
+        {{ '/usr/pgsql-' + postgresql_version + '/bin/postgresql-' + postgresql_version + '-setup initdb'
+          if postgresql_version != 'latest' else 'postgresql-setup --initdb' }}
       args:
         creates: "/var/lib/pgsql/data/PG_VERSION"
 
     - name: Enable and start PostgreSQL
       ansible.builtin.systemd:
-        name: "{{ 'postgresql-' + version if version != 'latest' else 'postgresql' }}"
+        name: "{{ 'postgresql-' + postgresql_version if postgresql_version != 'latest' else 'postgresql' }}"
         enabled: true
         state: started
   when: ansible_distribution == "Fedora"
