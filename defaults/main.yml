@@ -1,4 +1,16 @@
 #SPDX-License-Identifier: MIT-0
 ---
-# defaults file for ansible-role-postgesql
-version: 18
+# defaults file for ansible-role-postgresql
+postgresql_install: false
+postgresql_version: "16"  # или "latest"
+postgresql_host: "192.168.1.10"  # IP сервера PostgreSQL
+postgresql_port: 5432
+
+# Database settings
+postgresql_database_name: "nexus"
+postgresql_schema_name: "nexus"
+postgresql_user: "nexus"
+postgresql_password: "12345678"
+
+# PostgreSQL listen address (для удаленного подключения)
+postgresql_listen_addresses: "*"
