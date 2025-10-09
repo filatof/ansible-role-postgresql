@@ -1,0 +1,48 @@
+# =====================================================================
+# Debian / Ubuntu
+# =====================================================================
+- block:
+    - name: Ensure required dependencies
+      ansible.builtin.apt:
+        name:
+          - curl
+          - ca-certificates
+        state: present
+        update_cache: true
+
+    - name: Create directory for PostgreSQL key
+      ansible.builtin.file:
+        path: /usr/share/postgresql-common/pgdg
+        state: directory
+        mode: '0755'
+
+    - name: Download PostgreSQL GPG key
+      ansible.builtin.get_url:
+        url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+        dest: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+        mode: '0644'
+
+    - name: Add PostgreSQL APT repository
+      ansible.builtin.shell: |
+        . /etc/os-release
+        echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+        https://apt.postgresql.org/pub/repos/apt $VERSION_CODENAME-pgdg main" > /etc/apt/sources.list.d/pgdg.list
+      args:
+        creates: /etc/apt/sources.list.d/pgdg.list
+
+    - name: Update APT cache
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Install PostgreSQL (latest)
+      ansible.builtin.apt:
+        name: postgresql
+        state: present
+      when: version == "latest"
+
+    - name: Install PostgreSQL {{ version }}
+      ansible.builtin.apt:
+        name: "postgresql-{{ version }}"
+        state: present
+      when: version != "latest"
+  when: ansible_os_family == "Debian"

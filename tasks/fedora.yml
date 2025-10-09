@@ -1,0 +1,34 @@
+# =====================================================================
+# Fedora
+# =====================================================================
+- block:
+    - name: Install PostgreSQL repository
+      ansible.builtin.dnf:
+        name: "https://download.postgresql.org/pub/repos/yum/reporpms/F-{{ ansible_distribution_major_version }}-{{ ansible_architecture }}/pgdg-fedora-repo-latest.noarch.rpm"
+        state: present
+
+    - name: Install PostgreSQL server (latest)
+      ansible.builtin.dnf:
+        name: postgresql-server
+        state: present
+      when: version == "latest"
+
+    - name: Install PostgreSQL server {{ version }}
+      ansible.builtin.dnf:
+        name: "postgresql{{ version }}-server"
+        state: present
+      when: version != "latest"
+
+    - name: Initialize PostgreSQL database
+      ansible.builtin.command: >
+        {{ '/usr/pgsql-' + version + '/bin/postgresql-' + version + '-setup initdb'
+          if version != 'latest' else 'postgresql-setup --initdb' }}
+      args:
+        creates: "/var/lib/pgsql/data/PG_VERSION"
+
+    - name: Enable and start PostgreSQL
+      ansible.builtin.systemd:
+        name: "{{ 'postgresql-' + version if version != 'latest' else 'postgresql' }}"
+        enabled: true
+        state: started
+  when: ansible_distribution == "Fedora"

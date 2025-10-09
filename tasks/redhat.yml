@@ -1,0 +1,39 @@
+# =====================================================================
+# RedHat / CentOS / Rocky / AlmaLinux / Amazon Linux
+# =====================================================================
+- block:
+    - name: Install PostgreSQL repository
+      ansible.builtin.dnf:
+        name: "https://download.postgresql.org/pub/repos/yum/reporpms/EL-{{ ansible_distribution_major_version }}-{{ ansible_architecture }}/pgdg-redhat-repo-latest.noarch.rpm"
+        state: present
+
+    - name: Disable built-in PostgreSQL module
+      ansible.builtin.command: dnf -qy module disable postgresql
+      args:
+        warn: false
+
+    - name: Install PostgreSQL server (latest)
+      ansible.builtin.dnf:
+        name: postgresql-server
+        state: present
+      when: version == "latest"
+
+    - name: Install PostgreSQL server {{ version }}
+      ansible.builtin.dnf:
+        name: "postgresql{{ version }}-server"
+        state: present
+      when: version != "latest"
+
+    - name: Initialize PostgreSQL database
+      ansible.builtin.command: >
+        {{ 'postgresql-setup --initdb' if version == 'latest'
+           else '/usr/pgsql-' + version + '/bin/postgresql-' + version + '-setup initdb' }}
+      args:
+        creates: "/var/lib/pgsql/data/PG_VERSION"
+
+    - name: Enable and start PostgreSQL
+      ansible.builtin.systemd:
+        name: "{{ 'postgresql-' + version if version != 'latest' else 'postgresql' }}"
+        enabled: true
+        state: started
+  when: ansible_os_family == "RedHat"

@@ -1,0 +1,10 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for ansible-role-postgesql
+- name: Show detected system
+  ansible.builtin.debug:
+    msg: "Detected OS family: {{ ansible_os_family }}, distribution: {{ ansible_distribution }}, arch: {{ ansible_architecture }}"
+
+- include_tasks: debian.yml
+- include_tasks: fedora.yml
+- include_tasks: redhat.yml
