@@ -1,38 +1,75 @@
-Role Name
-=========
+# Ansible Role: PostgreSQL
 
-A brief description of the role goes here.
+Ansible роль для установки и настройки PostgreSQL сервера.
 
-Requirements
-------------
+## Описание
 
-Any pre-requisites that may not be covered by Ansible itself or the role should be mentioned here. For instance, if the role uses the EC2 module, it may be a good idea to mention in this section that the boto package is required.
+Данная роль выполняет установку и базовую настройку PostgreSQL СУБД на целевых хостах. Роль поддерживает установку PostgreSQL из официальных репозиториев и позволяет настроить основные параметры конфигурации.
 
-Role Variables
---------------
+## Требования
 
-A description of the settable variables for this role should go here, including any variables that are in defaults/main.yml, vars/main.yml, and any variables that can/should be set via parameters to the role. Any variables that are read from other roles and/or the global scope (ie. hostvars, group vars, etc.) should be mentioned here as well.
+- Ansible 2.9 или выше
+- Поддерживаемые операционные системы:
+  - Ubuntu 18.04/20.04/22.04
+  - Debian 10/11/12
+  
 
-Dependencies
-------------
+## Переменные роли
 
-A list of other roles hosted on Galaxy should go here, plus any details in regards to parameters that may need to be set for other roles, or variables that are used from other roles.
+### Основные переменные
 
-Example Playbook
-----------------
+```yaml
+# defaults file for ansible-role-postgresql
+postgresql_install: false
+postgresql_version: "16"  # или "latest"
+postgresql_host: "192.168.1.10"  # IP сервера PostgreSQL
+postgresql_port: 5432
 
-Including an example of how to use your role (for instance, with variables passed in as parameters) is always nice for users too:
+# Database settings
+postgresql_database_name: "nexus"
+postgresql_schema_name: "nexus"
+postgresql_user: "nexus"
+postgresql_password: "12345678"
 
-    - hosts: servers
-      roles:
-         - { role: username.rolename, x: 42 }
+# PostgreSQL listen address (для удаленного подключения)
+postgresql_listen_addresses: "*"
+```
 
-License
--------
+## Зависимости
 
-BSD
+Роль не имеет внешних зависимостей от других ролей.
 
-Author Information
-------------------
+## Пример использования
 
-An optional section for the role authors to include contact information, or a website (HTML is not allowed).
+### Простая установка
+
+```yaml
+- hosts: database_servers
+  become: yes
+  roles:
+    - ansible-role-postgresql
+```
+
+### Использование с requirements.yml
+
+```yaml
+---
+- src: https://github.com/filatof/ansible-role-postgresql.git
+  scm: git
+  version: main
+  name: postgresql
+```
+
+Установка роли:
+
+```bash
+ansible-galaxy install -r requirements.yml
+```
+
+## Лицензия
+
+MIT
+
+## Автор
+
+Эта роль создана [filatof](https://github.com/filatof).

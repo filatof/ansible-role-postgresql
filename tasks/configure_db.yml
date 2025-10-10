@@ -1,0 +1,117 @@
+# ============================================================
+# Set password for postgres user
+# ============================================================
+- name: Ensure postgres user has a password
+  become: true
+  ansible.builtin.shell: |
+    sudo -u postgres psql -c "ALTER USER postgres PASSWORD '{{ postgres_password }}';"
+  changed_when: false
+
+# =====================================================================
+# Configure PostgreSQL for remote connections
+# =====================================================================
+- name: Configure PostgreSQL to listen on all addresses
+  ansible.builtin.lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+    regexp: '^#?listen_addresses\s*='
+    line: "listen_addresses = '{{ postgresql_listen_addresses }}'"
+    state: present
+  notify: Restart PostgreSQL
+  when: postgresql_version != "latest"
+
+- name: Configure PostgreSQL to listen on all addresses (latest)
+  ansible.builtin.shell: |
+    PG_VERSION=$(ls /etc/postgresql/ | head -n1)
+    sed -i "s/^#\?listen_addresses\s*=.*/listen_addresses = '{{ postgresql_listen_addresses }}'/" \
+      /etc/postgresql/${PG_VERSION}/main/postgresql.conf
+  when: postgresql_version == "latest"
+  notify: Restart PostgreSQL
+
+- name: Allow remote connections in pg_hba.conf
+  ansible.builtin.lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf"
+    line: "host    {{ postgresql_database_name }}    {{ postgresql_user }}    0.0.0.0/0    scram-sha-256"
+    state: present
+  notify: Restart PostgreSQL
+  when: postgresql_version != "latest"
+
+- name: Allow remote connections in pg_hba.conf (latest)
+  ansible.builtin.shell: |
+    PG_VERSION=$(ls /etc/postgresql/ | head -n1)
+    echo "host    {{ postgresql_database_name }}    {{ postgresql_user }}    0.0.0.0/0    scram-sha-256" >> \
+      /etc/postgresql/${PG_VERSION}/main/pg_hba.conf
+  when: postgresql_version == "latest"
+  notify: Restart PostgreSQL
+
+- name: Ensure PostgreSQL is started
+  ansible.builtin.systemd:
+    name: postgresql
+    state: started
+    enabled: true
+
+# ============================================================
+# Create Nexus database, schema and user via TCP connection
+# ============================================================
+- name: Create Nexus database
+  community.postgresql.postgresql_db:
+    name: "{{ postgresql_database_name }}"
+    encoding: UTF8
+    lc_collate: en_US.UTF-8
+    lc_ctype: en_US.UTF-8
+    template: template0
+    state: present
+    login_user: postgres
+    login_password: "{{ postgres_password }}"
+    login_host: 127.0.0.1
+
+- name: Create Nexus schema
+  community.postgresql.postgresql_schema:
+    database: "{{ postgresql_database_name }}"
+    name: "{{ postgresql_schema_name }}"
+    state: present
+    login_user: postgres
+    login_password: "{{ postgres_password }}"
+    login_host: 127.0.0.1
+
+- name: Create Nexus database user
+  community.postgresql.postgresql_user:
+    db: "{{ postgresql_database_name }}"
+    name: "{{ postgresql_user }}"
+    password: "{{ postgresql_user_password }}"
+    state: present
+    login_user: postgres
+    login_password: "{{ postgres_password }}"
+    login_host: 127.0.0.1
+
+- name: Grant privileges on database to Nexus user
+  community.postgresql.postgresql_privs:
+    database: "{{ postgresql_database_name }}"
+    type: database
+    roles: "{{ postgresql_user }}"
+    privs: ALL
+    state: present
+    login_user: postgres
+    login_password: "{{ postgres_password }}"
+    login_host: 127.0.0.1
+
+- name: Grant privileges on schema to Nexus user
+  community.postgresql.postgresql_privs:
+    database: "{{ postgresql_database_name }}"
+    type: schema
+    objs: "{{ postgresql_schema_name }}"
+    roles: "{{ postgresql_user }}"
+    privs: ALL
+    state: present
+    login_user: postgres
+    login_password: "{{ postgres_password }}"
+    login_host: 127.0.0.1
+
+- name: Install pg_trgm extension
+  community.postgresql.postgresql_ext:
+    name: pg_trgm
+    db: "{{ postgresql_database_name }}"
+    schema: "{{ postgresql_schema_name }}"
+    state: present
+    login_user: postgres
+    login_password: "{{ postgres_password }}"
+    login_host: 127.0.0.1

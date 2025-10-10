@@ -2,38 +2,57 @@
 # RedHat / CentOS / Rocky / AlmaLinux / Amazon Linux
 # =====================================================================
 - block:
-    - name: Install PostgreSQL repository
-      ansible.builtin.dnf:
-        name: "https://download.postgresql.org/pub/repos/yum/reporpms/EL-{{ ansible_distribution_major_version }}-{{ ansible_architecture }}/pgdg-redhat-repo-latest.noarch.rpm"
+    - name: Set PGDG repo RPM URL
+      ansible.builtin.set_fact:
+        pgdg_rpm_url: >-
+          https://download.postgresql.org/pub/repos/yum/reporpms/EL-{{ ansible_distribution_major_version }}-{{ 'x86_64' if ansible_architecture == 'x86_64' else ansible_architecture }}/pgdg-redhat-repo-latest.noarch.rpm
+
+    - name: Download PGDG repository RPM to /tmp
+      ansible.builtin.get_url:
+        url: "{{ pgdg_rpm_url }}"
+        dest: /tmp/pgdg-redhat-repo-latest.noarch.rpm
+        mode: '0644'
+
+    - name: Install PGDG repository RPM (yum will import the GPG key from the package)
+      ansible.builtin.yum:
+        name: /tmp/pgdg-redhat-repo-latest.noarch.rpm
         state: present
 
-    - name: Disable built-in PostgreSQL module
+    - name: Ensure repo metadata is up to date
+      ansible.builtin.yum:
+        name: "*"
+        state: latest
+        update_only: true
+      register: _yum_update
+      changed_when: false
+
+    - name: Disable built-in postgresql module (only on dnf-based systems)
       ansible.builtin.command: dnf -qy module disable postgresql
       args:
         warn: false
+      when: ansible_pkg_mgr == 'dnf' or (ansible_distribution_major_version | int) >= 8
 
-    - name: Install PostgreSQL server (latest)
-      ansible.builtin.dnf:
-        name: postgresql-server
+    - name: Install PostgreSQL server package
+      ansible.builtin.yum:
+        name: "{{ 'postgresql-server' if postgresql_version == 'latest' else 'postgresql' + postgresql_version + '-server' }}"
         state: present
-      when: postgresql_version == "latest"
 
-    - name: Install PostgreSQL server {{ postgresql_version }}
-      ansible.builtin.dnf:
-        name: "postgresql{{ version }}-server"
-        state: present
-      when: postgresql_version != "latest"
-
-    - name: Initialize PostgreSQL database
-      ansible.builtin.command: >
-        {{ 'postgresql-setup --initdb' if postgresql_version == 'latest'
-           else '/usr/pgsql-' + postgresql_version + '/bin/postgresql-' + postgresql_version + '-setup initdb' }}
+    - name: Initialize PostgreSQL database (explicit version)
+      ansible.builtin.command: "/usr/pgsql-{{ postgresql_version }}/bin/postgresql-{{ postgresql_version }}-setup initdb"
       args:
-        creates: "/var/lib/pgsql/data/PG_VERSION"
+        creates: "/var/lib/pgsql/{{ postgresql_version }}/data/PG_VERSION"
+      when: postgresql_version is defined and postgresql_version != 'latest'
 
-    - name: Enable and start PostgreSQL
+    - name: Initialize PostgreSQL database (distribution package / latest)
+      ansible.builtin.command: postgresql-setup --initdb
+      args:
+        creates: /var/lib/pgsql/data/PG_VERSION
+      when: postgresql_version is not defined or postgresql_version == 'latest'
+
+    - name: Enable and start PostgreSQL service
       ansible.builtin.systemd:
-        name: "{{ 'postgresql-' + postgresql_version if postgresql_version != 'latest' else 'postgresql' }}"
+        name: "{{ 'postgresql-' + postgresql_version if postgresql_version is defined and postgresql_version != 'latest' else 'postgresql' }}"
         enabled: true
         state: started
-  when: ansible_os_family == "RedHat"
+
+  when: ansible_os_family == 'RedHat'
