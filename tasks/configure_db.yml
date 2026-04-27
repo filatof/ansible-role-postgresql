@@ -27,22 +27,6 @@
   when: postgresql_version == "latest"
   notify: Restart PostgreSQL
 
-- name: Allow remote connections in pg_hba.conf
-  ansible.builtin.lineinfile:
-    path: "/etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf"
-    line: "host    {{ postgresql_database_name }}    {{ postgresql_user }}    0.0.0.0/0    scram-sha-256"
-    state: present
-  notify: Restart PostgreSQL
-  when: postgresql_version != "latest"
-
-- name: Allow remote connections in pg_hba.conf (latest)
-  ansible.builtin.shell: |
-    PG_VERSION=$(ls /etc/postgresql/ | head -n1)
-    echo "host    {{ postgresql_database_name }}    {{ postgresql_user }}    0.0.0.0/0    scram-sha-256" >> \
-      /etc/postgresql/${PG_VERSION}/main/pg_hba.conf
-  when: postgresql_version == "latest"
-  notify: Restart PostgreSQL
-
 - name: Ensure PostgreSQL is started
   ansible.builtin.systemd:
     name: postgresql
@@ -50,11 +34,27 @@
     enabled: true
 
 # ============================================================
-# Create Nexus database, schema and user via TCP connection
+# Create users
 # ============================================================
-- name: Create Nexus database
+- name: Create database users
+  community.postgresql.postgresql_user:
+    name: "{{ item.user }}"
+    password: "{{ item.password }}"
+    state: present
+    login_user: postgres
+    login_password: "{{ postgres_password }}"
+    login_host: 127.0.0.1
+  loop: "{{ postgresql_databases }}"
+  loop_control:
+    label: "{{ item.user }}"
+
+# ============================================================
+# Create databases
+# ============================================================
+- name: Create databases
   community.postgresql.postgresql_db:
-    name: "{{ postgresql_database_name }}"
+    name: "{{ item.name }}"
+    owner: "{{ item.owner }}"
     encoding: UTF8
     lc_collate: en_US.UTF-8
     lc_ctype: en_US.UTF-8
@@ -63,55 +63,105 @@
     login_user: postgres
     login_password: "{{ postgres_password }}"
     login_host: 127.0.0.1
+  loop: "{{ postgresql_databases }}"
+  loop_control:
+    label: "{{ item.name }}"
 
-- name: Create Nexus schema
+# ============================================================
+# Create schemas (только если schema != public)
+# ============================================================
+- name: Create custom schemas
   community.postgresql.postgresql_schema:
-    database: "{{ postgresql_database_name }}"
-    name: "{{ postgresql_schema_name }}"
+    database: "{{ item.name }}"
+    name: "{{ item.schema }}"
     state: present
     login_user: postgres
     login_password: "{{ postgres_password }}"
     login_host: 127.0.0.1
+  loop: "{{ postgresql_databases }}"
+  loop_control:
+    label: "{{ item.name }}/{{ item.schema }}"
+  when: item.schema != "public"
 
-- name: Create Nexus database user
-  community.postgresql.postgresql_user:
-    db: "{{ postgresql_database_name }}"
-    name: "{{ postgresql_user }}"
-    password: "{{ postgresql_user_password }}"
-    state: present
-    login_user: postgres
-    login_password: "{{ postgres_password }}"
-    login_host: 127.0.0.1
-
-- name: Grant privileges on database to Nexus user
+# ============================================================
+# Grant privileges on databases
+# ============================================================
+- name: Grant ALL on database to owner
   community.postgresql.postgresql_privs:
-    database: "{{ postgresql_database_name }}"
+    database: "{{ item.name }}"
     type: database
-    roles: "{{ postgresql_user }}"
+    roles: "{{ item.user }}"
     privs: ALL
     state: present
     login_user: postgres
     login_password: "{{ postgres_password }}"
     login_host: 127.0.0.1
+  loop: "{{ postgresql_databases }}"
+  loop_control:
+    label: "{{ item.name }} -> {{ item.user }}"
 
-- name: Grant privileges on schema to Nexus user
+# ============================================================
+# Grant privileges on custom schemas
+# ============================================================
+- name: Grant ALL on schema to owner
   community.postgresql.postgresql_privs:
-    database: "{{ postgresql_database_name }}"
+    database: "{{ item.name }}"
     type: schema
-    objs: "{{ postgresql_schema_name }}"
-    roles: "{{ postgresql_user }}"
+    objs: "{{ item.schema }}"
+    roles: "{{ item.user }}"
     privs: ALL
     state: present
     login_user: postgres
     login_password: "{{ postgres_password }}"
     login_host: 127.0.0.1
+  loop: "{{ postgresql_databases }}"
+  loop_control:
+    label: "{{ item.name }}/{{ item.schema }} -> {{ item.user }}"
+  when: item.schema != "public"
 
-- name: Install pg_trgm extension
+# ============================================================
+# Allow remote connections in pg_hba.conf
+# ============================================================
+- name: Allow remote connections in pg_hba.conf
+  ansible.builtin.lineinfile:
+    path: "/etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf"
+    line: "host    {{ item.name }}    {{ item.user }}    0.0.0.0/0    scram-sha-256"
+    state: present
+  notify: Restart PostgreSQL
+  loop: "{{ postgresql_databases }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: postgresql_version != "latest"
+
+- name: Allow remote connections in pg_hba.conf (latest)
+  ansible.builtin.shell: |
+    PG_VERSION=$(ls /etc/postgresql/ | head -n1)
+    grep -qF "host    {{ item.name }}    {{ item.user }}    0.0.0.0/0" \
+      /etc/postgresql/${PG_VERSION}/main/pg_hba.conf || \
+    echo "host    {{ item.name }}    {{ item.user }}    0.0.0.0/0    scram-sha-256" >> \
+      /etc/postgresql/${PG_VERSION}/main/pg_hba.conf
+  notify: Restart PostgreSQL
+  loop: "{{ postgresql_databases }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: postgresql_version == "latest"
+
+# ============================================================
+# Install extensions
+# ============================================================
+- name: Install database extensions
   community.postgresql.postgresql_ext:
-    name: pg_trgm
-    db: "{{ postgresql_database_name }}"
-    schema: "{{ postgresql_schema_name }}"
+    name: "{{ item.1 }}"
+    db: "{{ item.0.name }}"
+    schema: "{{ item.0.schema }}"
     state: present
     login_user: postgres
     login_password: "{{ postgres_password }}"
     login_host: 127.0.0.1
+  with_subelements:
+    - "{{ postgresql_databases }}"
+    - extensions
+    - skip_missing: true
+  loop_control:
+    label: "{{ item.0.name }}: {{ item.1 }}"
+  when: item.1 | length > 0

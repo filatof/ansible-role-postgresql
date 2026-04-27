@@ -7,10 +7,41 @@ postgresql_host: "192.168.1.10"  # IP сервера PostgreSQL
 postgresql_port: 5432
 
 # Database settings
-postgresql_database_name: "nexus"
-postgresql_schema_name: "nexus"
-postgresql_user: "nexus"
-postgresql_password: "12345678"
+#postgresql_database_name: "nexus"
+#postgresql_schema_name: "nexus"
+#postgresql_user: "nexus"
+#postgresql_password: "12345678"
 
 # PostgreSQL listen address (для удаленного подключения)
 postgresql_listen_addresses: "*"
+
+# Database settings
+postgresql_databases:
+  - name: nexus
+    schema: nexus
+    owner: nexus
+    user: nexus
+    password: "nexus_pass"
+    extensions:
+      - pg_trgm
+
+  - name: wikidb
+    schema: public
+    owner: wiki
+    user: wiki
+    password: "wiki_pass"
+    extensions: []
+
+  - name: n8ndb
+    schema: public
+    owner: n8n
+    user: n8n
+    password: "n8n_pass"
+    extensions: []
+
+  - name: ollamadb
+    schema: public
+    owner: ollama
+    user: ollama
+    password: "ollama_pass"
+    extensions: []
